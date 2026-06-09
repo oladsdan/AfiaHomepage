@@ -1,0 +1,68 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "EVhosgyLvodJvb7tpT1lM"
+uri = "file://public/dash/video1.png"
+type = "image"
+title = "car vlog thumbnail"
+
+[[generated]]
+id = "W6QSCxQ0pwY-vjF1-tkco"
+uri = "file://public/dash/video2.png"
+type = "image"
+title = "studio setup thumbnail"
+
+[[generated]]
+id = "OgI6qM6DLPYtvwHk5awcd"
+uri = "file://public/dash/video3.png"
+type = "image"
+title = "podcast mistake thumbnail"
+
+[[generated]]
+id = "xyNe58UCF8RHWVGIc0HHf"
+uri = "file://public/dash/video4.png"
+type = "image"
+title = "mountain lake thumbnail"
+
+[[generated]]
+id = "YPo5-aZsY9eWQA6G3Bvle"
+uri = "file://public/dash/video5.png"
+type = "image"
+title = "content ideas thumbnail"
+
+[[generated]]
+id = "VqhHaDUWNujqnonVJKg1B"
+uri = "file://public/dash/video6.png"
+type = "image"
+title = "morning routine thumbnail"
+
+[[generated]]
+id = "fuMxI2p5vUJn1ZeL7wWww"
+uri = "file://public/dash/avatar.png"
+type = "image"
+title = "user avatar"
+
+[[generated]]
+id = "jIY3oDRMWfIUbqgUFtLug"
+uri = "file://public/dash/aud-teens.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "fDgWjXu3m9lo5_42n-6lV"
+uri = "file://public/dash/aud-young-adults.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "LJ7gZ2ionT_bN9KQvbJQl"
+uri = "file://public/dash/aud-adults.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "FjZt1JHqe8GHmxCF7zFGT"
+uri = "file://public/dash/aud-broad.png"
+type = "image"
+title = "generated_image"

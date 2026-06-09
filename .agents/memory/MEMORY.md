@@ -1,0 +1,2 @@
+- [Local auth limitation](local-auth-limitation.md) — signed-in pages can't be screenshotted locally (remote auth backend is CORS-blocked); verify via tsc + 200 status instead.
+- [Next route-group cache corruption](next-route-cache.md) — after moving/restructuring app routes, stale `.next` causes MODULE_NOT_FOUND chunk errors; clear `.next` and restart.
