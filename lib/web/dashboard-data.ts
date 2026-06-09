@@ -21,12 +21,12 @@ import type {
 export const primaryNav: NavLink[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { id: "video-analyzer", label: "Video analyzer", icon: Video, href: "/video-analyzer" },
-  { id: "analytics", label: "Analytics", icon: BarChart3 },
-  { id: "ai-tools", label: "AI Tools", icon: Sparkles },
+  // { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "ai-chat", label: "AI coach", icon: Sparkles, href: "/ai-chat" },
   { id: "caption-generator", label: "Caption generator", icon: MessageSquareText, href: "/caption-generator" },
   { id: "script-generator", label: "Script generator", icon: FileText, href: "/script-generator" },
   { id: "content-ideas", label: "Content Ideas & Hooks", icon: Lightbulb, href: "/content-ideas" },
-  { id: "recent-videos", label: "Recent videos", icon: Clapperboard },
+  { id: "recent-videos", label: "Recent videos", icon: Clapperboard, href: "/recent-videos" },
 ];
 
 export const secondaryNav: NavLink[] = [

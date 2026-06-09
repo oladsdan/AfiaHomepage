@@ -20,6 +20,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/caption-generator": "Caption generator",
   "/script-generator": "Script generator",
   "/content-ideas": "Content Ideas & Hooks",
+  "/recent-videos": "Analysis history",
   "/settings": "Profile",
 };
 

@@ -44,3 +44,16 @@ export interface AnalyzerPerk {
   id: string;
   label: string;
 }
+
+export interface AnalysisHistoryItem {
+  id: string;
+  title: string;
+  note: string;
+  thumbnail: string;
+  duration: string;
+  status: "completed" | "processing" | "failed";
+  /** ISO date string, e.g. "2024-05-20" */
+  date: string;
+  /** Display time, e.g. "10:30 AM" */
+  time: string;
+}
