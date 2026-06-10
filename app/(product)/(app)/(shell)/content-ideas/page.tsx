@@ -1,6 +1,7 @@
-import { Bookmark, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { HelpSidebar } from "../caption-generator/_components/HelpSidebar";
 import { ContentIdeasForm } from "./_components/ContentIdeasForm";
+import { SavedIdeasPanel } from "./_components/SavedIdeasPanel";
 
 export default function ContentIdeasPage() {
   return (
@@ -16,13 +17,7 @@ export default function ContentIdeasPage() {
             audience and niche.
           </p>
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-lg border border-dash-border bg-dash-surface px-3 py-2 text-sm font-medium text-dash-ink transition-colors hover:bg-dash-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2"
-        >
-          <Bookmark className="h-4 w-4" aria-hidden="true" />
-          Saved ideas
-        </button>
+        <SavedIdeasPanel />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">

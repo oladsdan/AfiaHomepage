@@ -5,13 +5,24 @@ import { Sparkles } from "lucide-react";
 import { platforms, audiences } from "@/lib/web/caption-generator-data";
 import { videoTypes } from "@/lib/web/content-ideas-data";
 import { cn } from "@/lib/utils";
+import { useAiMutation } from "@/lib/web/ai/useAiMutation";
+import { generateIdeas } from "@/lib/web/ai/ideas-api";
+import type { ContentIdea, IdeaGenerateInput } from "@/lib/web/ai/types";
+import { AiGenerating } from "@/app/(product)/_components/AiGenerating";
 import { Card } from "../../dashboard/_components/ui/Card";
 import { SelectableTile } from "../../caption-generator/_components/SelectableTile";
+import { IdeaResultCard, type IdeaHooksContext } from "./IdeaView";
 
 const MAX_CHARS = 200;
 
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="text-sm font-semibold text-dash-ink">{children}</h2>;
+}
+
+interface IdeaResults {
+  ideas: ContentIdea[];
+  /** The video type + platforms that produced these ideas (drives More hooks). */
+  hooksContext: IdeaHooksContext;
 }
 
 export function ContentIdeasForm() {
@@ -20,7 +31,35 @@ export function ContentIdeasForm() {
   const [videoType, setVideoType] = useState<string | null>(null);
   const [audience, setAudience] = useState<string | null>(null);
 
-  const ready = topic.trim().length > 0;
+  const [results, setResults] = useState<IdeaResults | null>(null);
+
+  const generate = useAiMutation<ContentIdea[], IdeaGenerateInput>({
+    mutationFn: generateIdeas,
+    onSuccess: (ideas, variables) => {
+      setResults({
+        ideas,
+        hooksContext: {
+          videoType: variables.videoType,
+          platforms: variables.platforms,
+        },
+      });
+    },
+  });
+
+  const ready =
+    topic.trim().length > 0 && videoType !== null && audience !== null;
+  const canGenerate = ready && !generate.isPending;
+
+  const handleGenerate = () => {
+    if (!ready || generate.isPending || videoType === null || audience === null)
+      return;
+    generate.mutate({
+      description: topic.trim(),
+      platforms: [platform],
+      videoType,
+      audience,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -125,17 +164,45 @@ export function ContentIdeasForm() {
 
       <button
         type="button"
-        disabled={!ready}
+        onClick={handleGenerate}
+        disabled={!canGenerate}
+        aria-busy={generate.isPending}
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-dash px-6 py-4 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2",
-          ready
+          canGenerate
             ? "bg-gradient-to-r from-teal-600 via-teal-500 to-blue-500 text-white shadow-dash-md hover:opacity-95"
             : "cursor-not-allowed bg-dash-border text-dash-muted",
         )}
       >
         <Sparkles className="h-4 w-4" aria-hidden="true" />
-        Generate Content Ideas
+        {generate.isPending ? "Generating…" : "Generate Content Ideas"}
       </button>
+
+      {generate.isPending ? (
+        <AiGenerating
+          label="Brainstorming ideas…"
+          sublabel="This usually takes a few seconds."
+        />
+      ) : results ? (
+        <section aria-label="Generated content ideas" className="space-y-4">
+          <h2 className="text-lg font-bold text-dash-ink">Your content ideas</h2>
+          {results.ideas.length === 0 ? (
+            <Card className="p-5">
+              <p className="text-sm text-dash-muted">
+                No ideas came back this time. Try generating again.
+              </p>
+            </Card>
+          ) : (
+            results.ideas.map((idea, i) => (
+              <IdeaResultCard
+                key={idea.id ?? `idea-${i}`}
+                idea={idea}
+                hooksContext={results.hooksContext}
+              />
+            ))
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

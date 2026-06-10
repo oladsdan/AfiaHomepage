@@ -79,6 +79,8 @@ export interface GcsSignedUrl {
 export interface GcsCompleteResult {
   uploadId: string;
   thumbnailUrl?: string;
+  fileName?: string;
+  fileSize?: number | string;
   status: string; // "READY"
 }
 
@@ -87,26 +89,60 @@ export interface AnalysisDraftResult {
   status: string; // "PENDING"
 }
 
-export type AnalysisStatus = "PENDING" | "COMPLETED" | "FAILED" | string;
+export type AnalysisStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "FAILED"
+  | string;
 
-export interface RecommendationActionStep {
-  step: string;
-  timestamp?: string | number | null;
-}
+/** Server-reported pipeline stage during a PENDING analysis. */
+export type ProcessingStep =
+  | "DOWNLOADING_VIDEO"
+  | "EXTRACTING_FRAMES"
+  | "ANALYZING_VIDEO"
+  | "STREAMING_FEEDBACK"
+  | "FINALIZING"
+  | "COMPLETED"
+  | string;
+
+/** Recommendation category enum used by the analysis backend. */
+export type RecommendationCategory =
+  | "HOOK"
+  | "VISUAL_ENGAGEMENT"
+  | "CAPTIONS"
+  | "TREND_ALIGNMENT"
+  | "CALL_TO_ACTION"
+  | "AUDIO_MUSIC"
+  | "STORYTELLING"
+  | string;
 
 export interface AnalysisRecommendation {
-  category?: string;
+  id?: string;
+  category?: RecommendationCategory;
+  /** e.g. "High priority" | "Medium priority" | "Low priority". */
   severity?: string;
   title?: string;
   description?: string;
+  /** Plain action-step strings (the real backend shape). */
+  actionSteps?: string[];
+  /** Optional clip timestamp (seconds) the recommendation refers to. */
+  timestamp?: number | string | null;
+  /** Some payloads include free-form observations. */
   observations?: string[];
-  actionSteps?: RecommendationActionStep[];
-  timestamp?: string | number | null;
 }
 
 export interface VideoAnalysis {
   id: string;
+  /** Primary status field on the real backend. `status` kept for tolerance. */
+  analysisStatus?: AnalysisStatus;
   status?: AnalysisStatus;
+  /** Current pipeline stage while PENDING. */
+  processingStep?: ProcessingStep;
+  /** Partial feedback text streamed during STREAMING_FEEDBACK. */
+  streamingText?: string;
+  /** Populated when analysisStatus === "FAILED". */
+  errorMessage?: string;
   overallScore?: number;
   scoreLabel?: string;
   scoreReasoning?: string;
@@ -120,7 +156,8 @@ export interface VideoAnalysis {
   trendScore?: number;
   suggestedCaptions?: string[];
   suggestedHashtags?: string[];
-  categoryStrengths?: Record<string, unknown>;
+  /** Per-category strength text ("what you're doing well"). */
+  categoryStrengths?: Partial<Record<string, string>>;
   recommendations?: AnalysisRecommendation[];
   parentAnalysisId?: string | null;
   revisionNumber?: number;
@@ -143,6 +180,7 @@ export interface AnalysisHistoryEntry {
   videoTitle?: string;
   fileName?: string;
   status?: AnalysisStatus;
+  analysisStatus?: AnalysisStatus;
   overallScore?: number;
   scoreLabel?: string;
   thumbnailUrl?: string;

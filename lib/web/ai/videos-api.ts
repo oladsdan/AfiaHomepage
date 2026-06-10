@@ -1,11 +1,29 @@
+import { getApiBaseUrl } from "@/lib/web/api";
 import { aiFetch } from "./client";
 import type {
   AnalysisDraftResult,
   AnalysisHistoryEntry,
+  AnalysisStatus,
   GcsCompleteResult,
   GcsSignedUrl,
   VideoAnalysis,
 } from "./types";
+
+/** Resolve a possibly-relative media URL (thumbnail/frame) to an absolute one. */
+export function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (typeof url !== "string" || !url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${getApiBaseUrl()}${url.charAt(0) === "/" ? "" : "/"}${url}`;
+}
+
+/** Normalized status: prefers analysisStatus, falls back to status. */
+export function statusOf(analysis: Pick<VideoAnalysis, "analysisStatus" | "status">): AnalysisStatus {
+  return (analysis.analysisStatus || analysis.status || "PENDING") as AnalysisStatus;
+}
+
+export function isTerminalStatus(status: AnalysisStatus | undefined): boolean {
+  return status === "COMPLETED" || status === "FAILED";
+}
 
 /**
  * Video Analyzer API (02-ai-tools.md, Prompt 7).
@@ -74,64 +92,54 @@ export interface UploadToGcsOptions {
   signal?: AbortSignal;
 }
 
-/**
- * PUTs the raw file to the GCS resumable URL using XMLHttpRequest so real
- * upload progress is available. No Authorization header, no credentials —
- * this request goes to Google Cloud Storage, not the Afia API.
- */
-export function uploadToGcs(
-  url: string,
-  file: File,
-  options: UploadToGcsOptions = {},
-): Promise<void> {
-  const { contentType, onProgress, signal } = options;
+/** 8 MB chunks — matches the mobile client's resumable upload. */
+const GCS_CHUNK_SIZE = 8 * 1024 * 1024;
 
-  return new Promise<void>((resolve, reject) => {
+/** PUT one chunk via XHR so we get sub-chunk progress; resolves the HTTP status. */
+function putChunk(
+  url: string,
+  chunk: Blob,
+  contentRange: string,
+  baseUploaded: number,
+  totalSize: number,
+  onProgress: ((percent: number) => void) | undefined,
+  signal: AbortSignal | undefined,
+): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
     if (signal?.aborted) {
       reject(new UploadAbortedError());
       return;
     }
-
     const xhr = new XMLHttpRequest();
     let settled = false;
-
-    const onAbortSignal = () => {
-      xhr.abort();
-    };
-    const cleanup = () => {
-      signal?.removeEventListener("abort", onAbortSignal);
-    };
+    const onAbortSignal = () => xhr.abort();
+    const cleanup = () => signal?.removeEventListener("abort", onAbortSignal);
 
     xhr.open("PUT", url, true);
-    xhr.setRequestHeader(
-      "Content-Type",
-      contentType || file.type || "video/mp4",
-    );
+    xhr.setRequestHeader("Content-Range", contentRange);
 
     xhr.upload.onprogress = (event: ProgressEvent) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(
-          Math.min(100, Math.round((event.loaded / event.total) * 100)),
+      if (event.lengthComputable && onProgress && totalSize > 0) {
+        const percent = Math.min(
+          99,
+          Math.round(((baseUploaded + event.loaded) / totalSize) * 100),
         );
+        onProgress(percent);
       }
     };
-
     xhr.onload = () => {
       if (settled) return;
       settled = true;
       cleanup();
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress?.(100);
-        resolve();
+      // 308 = resume incomplete (more chunks expected); 200/201 = complete.
+      if (xhr.status === 308 || xhr.status === 200 || xhr.status === 201) {
+        resolve(xhr.status);
       } else {
         reject(
-          new Error(
-            `Video upload failed (HTTP ${xhr.status}). Please try again.`,
-          ),
+          new Error(`Video upload failed (HTTP ${xhr.status}). Please try again.`),
         );
       }
     };
-
     xhr.onerror = () => {
       if (settled) return;
       settled = true;
@@ -140,7 +148,6 @@ export function uploadToGcs(
         new Error("Video upload failed. Check your connection and try again."),
       );
     };
-
     xhr.onabort = () => {
       if (settled) return;
       settled = true;
@@ -149,8 +156,60 @@ export function uploadToGcs(
     };
 
     signal?.addEventListener("abort", onAbortSignal);
-    xhr.send(file);
+    xhr.send(chunk);
   });
+}
+
+/**
+ * Uploads the raw file to the GCS resumable session URL in 8 MB chunks with
+ * Content-Range headers (mirrors the mobile client). Goes straight to Google
+ * Cloud Storage — no Authorization header, no credentials. Reports smooth
+ * 0–100 progress and supports cancellation via an AbortSignal.
+ */
+export async function uploadToGcs(
+  url: string,
+  file: File,
+  options: UploadToGcsOptions = {},
+): Promise<void> {
+  const { onProgress, signal } = options;
+  const totalSize = file.size;
+
+  if (signal?.aborted) throw new UploadAbortedError();
+
+  // Empty file: a single zero-length finalizing PUT.
+  if (totalSize === 0) {
+    await putChunk(url, file.slice(0, 0), `bytes */0`, 0, 0, onProgress, signal);
+    onProgress?.(100);
+    return;
+  }
+
+  let uploaded = 0;
+  while (uploaded < totalSize) {
+    if (signal?.aborted) throw new UploadAbortedError();
+    const chunkEnd = Math.min(uploaded + GCS_CHUNK_SIZE, totalSize);
+    const chunk = file.slice(uploaded, chunkEnd);
+    const contentRange = `bytes ${uploaded}-${chunkEnd - 1}/${totalSize}`;
+
+    const status = await putChunk(
+      url,
+      chunk,
+      contentRange,
+      uploaded,
+      totalSize,
+      onProgress,
+      signal,
+    );
+
+    if (status === 200 || status === 201) {
+      uploaded = totalSize;
+      break;
+    }
+    // 308 — advance past the chunk we just sent.
+    uploaded = chunkEnd;
+    onProgress?.(Math.min(99, Math.round((uploaded / totalSize) * 100)));
+  }
+
+  onProgress?.(100);
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +228,16 @@ export async function completeGcsUpload(
 ): Promise<GcsCompleteResult> {
   const body = await aiFetch<Envelope<GcsCompleteResult>>(
     "/api/videos/gcs-complete",
-    { method: "POST", body: input },
+    {
+      method: "POST",
+      // The backend expects fileSize as a string (matches the mobile client).
+      body: {
+        storagePath: input.storagePath,
+        fileName: input.fileName,
+        fileSize: String(input.fileSize),
+        creatorId: input.creatorId,
+      },
+    },
   );
   return body.data as GcsCompleteResult;
 }

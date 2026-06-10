@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { History, Loader2, RefreshCw, Send, Sparkles } from "lucide-react";
 import { useAiMutation } from "@/lib/web/ai/useAiMutation";
@@ -11,6 +11,7 @@ import { CategoryScores } from "./CategoryScores";
 import { Recommendations } from "./Recommendations";
 import { RevisionInsights } from "./RevisionInsights";
 import { ScoreCard } from "./ScoreCard";
+import { StrengthsList } from "./StrengthsList";
 import { SuggestedContent } from "./SuggestedContent";
 
 interface FollowupExchange {
@@ -106,13 +107,22 @@ export function AnalysisResults({
 }) {
   const videoName =
     analysis.videoTitle || analysis.title || analysis.fileName || null;
+  const followupRef = useRef<HTMLDivElement>(null);
+
+  const scrollToCoach = () => {
+    followupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const input = followupRef.current?.querySelector("input");
+    if (input instanceof HTMLInputElement) {
+      window.setTimeout(() => input.focus(), 400);
+    }
+  };
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-dash-ink sm:text-2xl">
-            Analysis results
+            Video analysis
           </h1>
           {videoName && (
             <p className="mt-0.5 truncate text-sm text-dash-muted">
@@ -129,15 +139,18 @@ export function AnalysisResults({
         </Link>
       </div>
 
-      <ScoreCard analysis={analysis} />
+      <ScoreCard analysis={analysis} onChatPress={scrollToCoach} />
       <RevisionInsights analysis={analysis} />
-      <CategoryScores analysis={analysis} />
       <Recommendations recommendations={analysis.recommendations} />
+      <StrengthsList analysis={analysis} />
       <SuggestedContent
         captions={analysis.suggestedCaptions}
         hashtags={analysis.suggestedHashtags}
       />
-      <FollowupSection analysisId={analysis.id} />
+      <CategoryScores analysis={analysis} />
+      <div ref={followupRef} className="scroll-mt-6">
+        <FollowupSection analysisId={analysis.id} />
+      </div>
 
       {/* Revision banner */}
       <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">

@@ -15,10 +15,17 @@ import {
 import { AiGenerating } from "@/app/(product)/_components/AiGenerating";
 import { AiError } from "@/lib/web/ai/client";
 import { useAiMutation } from "@/lib/web/ai/useAiMutation";
-import { retryAnalysis, type RetryResult } from "@/lib/web/ai/videos-api";
+import {
+  isTerminalStatus,
+  resolveMediaUrl,
+  retryAnalysis,
+  statusOf,
+  type RetryResult,
+} from "@/lib/web/ai/videos-api";
 import type { VideoAnalysis } from "@/lib/web/ai/types";
 import { Card } from "../../dashboard/_components/ui/Card";
 import { AnalysisResults } from "./AnalysisResults";
+import { AnalyzingScreen } from "./AnalyzingScreen";
 import { useAnalysisPoll } from "./useAnalysisPoll";
 
 function StateCard({
@@ -68,16 +75,20 @@ const secondaryButton =
   "inline-flex items-center gap-2 rounded-xl border border-dash-border bg-dash-surface px-4 py-2.5 text-sm font-medium text-dash-ink transition-colors hover:bg-dash-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2";
 
 /**
- * Watches one analysis id: polls while PENDING (with ~3 min timeout),
- * renders results when COMPLETED, and failure/timeout states otherwise.
+ * Watches one analysis id: polls while it's still running (showing the
+ * Analyzing screen with staged progress), renders results when COMPLETED,
+ * and failure/timeout states otherwise.
  */
 export function AnalysisView({
   analysisId,
+  thumbnailUrl,
   onAnalyzeRevision,
   onRetried,
   onReset,
 }: {
   analysisId: string;
+  /** Thumbnail to show on the Analyzing screen before the server returns one. */
+  thumbnailUrl?: string | null;
   /** Re-enter the upload flow with parentAnalysisId = the given id. */
   onAnalyzeRevision: (analysisId: string) => void;
   /** Called when a retry produced a NEW analysis id (defaults to navigation). */
@@ -87,7 +98,7 @@ export function AnalysisView({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { query, timedOut, keepWaiting } = useAnalysisPoll(analysisId);
+  const { query, progress, timedOut, keepWaiting } = useAnalysisPoll(analysisId);
 
   const retry = useAiMutation<RetryResult, void>({
     mutationFn: () => retryAnalysis(analysisId),
@@ -181,8 +192,11 @@ export function AnalysisView({
     return <AiGenerating label="Loading analysis…" />;
   }
 
-  // ---- Pending: analyzing / timed out --------------------------------------
-  if (analysis.status === "PENDING") {
+  const status = statusOf(analysis);
+  const liveThumb = thumbnailUrl ?? resolveMediaUrl(analysis.thumbnailUrl);
+
+  // ---- Still running: analyzing / timed out --------------------------------
+  if (!isTerminalStatus(status)) {
     if (timedOut) {
       return (
         <StateCard
@@ -200,10 +214,7 @@ export function AnalysisView({
     }
     return (
       <div className="space-y-4">
-        <AiGenerating
-          label="Analyzing your video…"
-          sublabel="This usually takes a minute or two."
-        />
+        <AnalyzingScreen progress={progress} thumbnailUrl={liveThumb} />
         <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-dash-muted">
           <span>
             You can leave this page — find it later in{" "}
@@ -222,8 +233,13 @@ export function AnalysisView({
   }
 
   // ---- Failed ---------------------------------------------------------------
-  if (analysis.status === "FAILED") {
-    const reason = [analysis.error, analysis.failureReason, analysis.message]
+  if (status === "FAILED") {
+    const reason = [
+      analysis.errorMessage,
+      analysis.error,
+      analysis.failureReason,
+      analysis.message,
+    ]
       .filter((value): value is string => typeof value === "string" && !!value)
       .shift();
     return (
@@ -247,7 +263,7 @@ export function AnalysisView({
     );
   }
 
-  // ---- Completed (or any terminal status with data — render defensively) ---
+  // ---- Completed -----------------------------------------------------------
   return (
     <AnalysisResults analysis={analysis} onAnalyzeRevision={onAnalyzeRevision} />
   );

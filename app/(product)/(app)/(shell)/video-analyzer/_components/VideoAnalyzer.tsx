@@ -9,10 +9,13 @@ import {
   FileVideo,
   GitCompareArrows,
   History,
+  Loader2,
+  Play,
   ShieldCheck,
+  Sparkles,
+  Video,
   X,
 } from "lucide-react";
-import { AiGenerating } from "@/app/(product)/_components/AiGenerating";
 import { useInvalidateUsage } from "@/lib/web/ai/usage";
 import { showAiError } from "@/lib/web/ai/useAiMutation";
 import {
@@ -20,6 +23,7 @@ import {
   createAnalysisDraft,
   getSignedUploadUrl,
   isUploadAborted,
+  resolveMediaUrl,
   uploadToGcs,
 } from "@/lib/web/ai/videos-api";
 import { useAuth } from "@/lib/web/auth/AuthProvider";
@@ -32,7 +36,14 @@ import { UploadCard } from "./UploadCard";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2GB (matches the upload UI)
 
-type Phase = "idle" | "uploading" | "preparing" | "analysis";
+type Phase = "idle" | "uploading" | "uploaded" | "starting" | "analysis";
+
+interface UploadedVideo {
+  uploadId: string;
+  fileName: string;
+  fileSize: number;
+  thumbnailUrl: string | null;
+}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
@@ -99,10 +110,88 @@ function UploadProgress({
   );
 }
 
+/** Thumbnail preview + "Analyze my video" — the step the user reviews before paying. */
+function UploadedPreview({
+  video,
+  starting,
+  onAnalyze,
+  onRemove,
+}: {
+  video: UploadedVideo;
+  starting: boolean;
+  onAnalyze: () => void;
+  onRemove: () => void;
+}) {
+  const displayName = video.fileName.replace(/\.[^/.]+$/, "");
+  return (
+    <Card className="flex flex-col items-center p-5 sm:p-6">
+      <div className="relative w-full max-w-[260px] overflow-hidden rounded-dash-lg bg-dash-border shadow-dash-md">
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={starting}
+          aria-label="Remove video"
+          className="absolute right-2 top-2 z-10 rounded-full bg-white/90 p-1 text-dash-ink shadow-dash transition-colors hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand disabled:opacity-50"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <div className="aspect-[3/4] w-full">
+          {video.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={video.thumbnailUrl}
+              alt={displayName}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center bg-dash-bg text-dash-muted">
+              <Video className="h-12 w-12" aria-hidden="true" />
+            </span>
+          )}
+        </div>
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 text-white">
+            <Play className="h-6 w-6 translate-x-0.5 fill-current" aria-hidden="true" />
+          </span>
+        </span>
+      </div>
+
+      <p className="mt-4 max-w-full truncate text-center text-base font-semibold text-dash-ink">
+        {displayName}
+      </p>
+      {video.fileSize > 0 && (
+        <p className="mt-0.5 text-sm text-dash-muted">{formatBytes(video.fileSize)}</p>
+      )}
+
+      <button
+        type="button"
+        onClick={onAnalyze}
+        disabled={starting}
+        className="mt-6 inline-flex w-full max-w-[320px] items-center justify-center gap-2 rounded-dash bg-gradient-to-r from-teal-600 via-teal-500 to-blue-500 px-6 py-3.5 text-sm font-semibold text-white shadow-dash-md transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        {starting ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+        )}
+        {starting ? "Starting analysis…" : "Analyze my video"}
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        disabled={starting}
+        className="mt-2 rounded text-sm font-medium text-dash-muted transition-colors hover:text-dash-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand disabled:opacity-50"
+      >
+        Choose a different video
+      </button>
+    </Card>
+  );
+}
+
 /**
- * Orchestrates the full Video Analyzer flow:
- * idle → uploading (GCS PUT with progress) → preparing (gcs-complete + draft)
- * → analysis (poll until COMPLETED/FAILED, then results).
+ * Orchestrates the full Video Analyzer flow (mirrors the mobile app):
+ * idle → uploading (chunked GCS PUT) → uploaded (thumbnail + "Analyze my
+ * video") → starting (analyze/draft) → analysis (poll → results).
  */
 export function VideoAnalyzer() {
   const { user } = useAuth();
@@ -113,6 +202,7 @@ export function VideoAnalyzer() {
   const [progress, setProgress] = useState(0);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState(0);
+  const [uploaded, setUploaded] = useState<UploadedVideo | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [parentAnalysisId, setParentAnalysisId] = useState<string | null>(
     () => searchParams.get("revisionOf"),
@@ -121,7 +211,7 @@ export function VideoAnalyzer() {
   const abortRef = useRef<AbortController | null>(null);
   const runIdRef = useRef(0);
 
-  const startAnalysis = async (file: File) => {
+  const uploadFile = async (file: File) => {
     if (!user) {
       toast("Please log in to analyze videos.");
       return;
@@ -152,7 +242,7 @@ export function VideoAnalyzer() {
       });
       if (runIdRef.current !== runId) return;
 
-      // 2. Raw PUT to Google Cloud Storage with real progress.
+      // 2. Chunked resumable PUT to Google Cloud Storage with real progress.
       await uploadToGcs(signed.resumableUrl, file, {
         contentType,
         signal: controller.signal,
@@ -161,9 +251,8 @@ export function VideoAnalyzer() {
         },
       });
       if (runIdRef.current !== runId) return;
-      setPhase("preparing");
 
-      // 3. Confirm the upload with the Afia API.
+      // 3. Confirm the upload with the Afia API → uploadId + thumbnail.
       const completed = await completeGcsUpload({
         storagePath: signed.storagePath,
         fileName: file.name,
@@ -172,16 +261,13 @@ export function VideoAnalyzer() {
       });
       if (runIdRef.current !== runId) return;
 
-      // 4. Create the analysis draft (server charges credits).
-      const draft = await createAnalysisDraft({
+      setUploaded({
         uploadId: completed.uploadId,
-        parentAnalysisId: parentAnalysisId ?? undefined,
+        fileName: completed.fileName || file.name,
+        fileSize: file.size,
+        thumbnailUrl: resolveMediaUrl(completed.thumbnailUrl),
       });
-      invalidateUsage();
-      if (runIdRef.current !== runId) return;
-
-      setAnalysisId(draft.analysisId);
-      setPhase("analysis");
+      setPhase("uploaded");
     } catch (error) {
       if (runIdRef.current !== runId) return;
       if (!isUploadAborted(error)) showAiError(error);
@@ -192,8 +278,33 @@ export function VideoAnalyzer() {
     }
   };
 
+  const analyzeUploaded = async () => {
+    if (!uploaded) return;
+    setPhase("starting");
+    try {
+      const draft = await createAnalysisDraft({
+        uploadId: uploaded.uploadId,
+        parentAnalysisId: parentAnalysisId ?? undefined,
+      });
+      invalidateUsage();
+      setAnalysisId(draft.analysisId);
+      setPhase("analysis");
+    } catch (error) {
+      showAiError(error);
+      setPhase("uploaded");
+    }
+  };
+
   const cancelUpload = () => {
     abortRef.current?.abort();
+  };
+
+  const removeUploaded = () => {
+    setUploaded(null);
+    setProgress(0);
+    setFileName(null);
+    setFileSize(0);
+    setPhase("idle");
   };
 
   const resetFlow = (nextParentId: string | null) => {
@@ -202,6 +313,7 @@ export function VideoAnalyzer() {
     abortRef.current = null;
     setParentAnalysisId(nextParentId);
     setAnalysisId(null);
+    setUploaded(null);
     setFileName(null);
     setFileSize(0);
     setProgress(0);
@@ -213,6 +325,7 @@ export function VideoAnalyzer() {
     return (
       <AnalysisView
         analysisId={analysisId}
+        thumbnailUrl={uploaded?.thumbnailUrl ?? null}
         onAnalyzeRevision={(id) => resetFlow(id)}
         onRetried={(newId) => setAnalysisId(newId)}
         onReset={() => resetFlow(null)}
@@ -251,7 +364,7 @@ export function VideoAnalyzer() {
         </p>
       </div>
 
-      {phase === "idle" && parentAnalysisId && (
+      {(phase === "idle" || phase === "uploaded") && parentAnalysisId && (
         <Card className="flex flex-col gap-3 border-dash-brand/40 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-dash-brand/10 text-dash-brand">
@@ -262,7 +375,7 @@ export function VideoAnalyzer() {
                 Analyzing a revision
               </p>
               <p className="text-xs text-dash-muted">
-                Your next upload will be compared with your{" "}
+                Your next analysis will be compared with your{" "}
                 <Link
                   href={`/video-analyzer/analysis/${parentAnalysisId}`}
                   className="rounded font-semibold text-dash-brand transition-colors hover:text-dash-brand-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand"
@@ -285,7 +398,7 @@ export function VideoAnalyzer() {
       )}
 
       {phase === "idle" && (
-        <UploadCard onFileSelected={(file) => void startAnalysis(file)} />
+        <UploadCard onFileSelected={(file) => void uploadFile(file)} />
       )}
 
       {phase === "uploading" && fileName && (
@@ -297,10 +410,12 @@ export function VideoAnalyzer() {
         />
       )}
 
-      {phase === "preparing" && (
-        <AiGenerating
-          label="Preparing your video…"
-          sublabel="Finalizing the upload and queuing the analysis."
+      {(phase === "uploaded" || phase === "starting") && uploaded && (
+        <UploadedPreview
+          video={uploaded}
+          starting={phase === "starting"}
+          onAnalyze={() => void analyzeUploaded()}
+          onRemove={removeUploaded}
         />
       )}
 

@@ -3,6 +3,11 @@ import type { AuthResponse, WebUser } from "./auth/types";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "https://afia-mobile--zokulabs.replit.app";
 
+/** Absolute API origin, used to resolve relative media URLs (thumbnails, frames). */
+export function getApiBaseUrl(): string {
+  return API_BASE_URL.replace(/\/+$/, "");
+}
+
 let accessToken: string | null = null;
 let loggingOut = false;
 

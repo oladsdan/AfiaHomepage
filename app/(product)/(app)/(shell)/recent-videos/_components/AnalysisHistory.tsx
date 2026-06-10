@@ -21,7 +21,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAiMutation } from "@/lib/web/ai/useAiMutation";
-import { deleteAnalysis, getVideoHistory } from "@/lib/web/ai/videos-api";
+import {
+  deleteAnalysis,
+  getVideoHistory,
+  resolveMediaUrl,
+} from "@/lib/web/ai/videos-api";
 import type { AnalysisHistoryEntry } from "@/lib/web/ai/types";
 import { toast } from "@/lib/web/toast";
 import { Card } from "../../dashboard/_components/ui/Card";
@@ -60,7 +64,8 @@ const MONTHS = [
 ];
 
 function normalizeStatus(entry: AnalysisHistoryEntry): ItemStatus {
-  const raw = typeof entry.status === "string" ? entry.status.toLowerCase() : "";
+  const rawStatus = entry.analysisStatus || entry.status;
+  const raw = typeof rawStatus === "string" ? rawStatus.toLowerCase() : "";
   if (
     raw.indexOf("pend") >= 0 ||
     raw.indexOf("process") >= 0 ||
@@ -125,10 +130,7 @@ function normalizeEntry(entry: AnalysisHistoryEntry): HistoryItem {
     id: entry.id,
     title,
     note,
-    thumbnailUrl:
-      typeof entry.thumbnailUrl === "string" && entry.thumbnailUrl
-        ? entry.thumbnailUrl
-        : null,
+    thumbnailUrl: resolveMediaUrl(entry.thumbnailUrl),
     status,
     timestamp,
     dateLabel,
