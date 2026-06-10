@@ -24,6 +24,16 @@ const PAGE_TITLES: Record<string, string> = {
   "/settings": "Profile",
 };
 
+/** Exact match first, then prefix match so nested routes
+ *  (e.g. /video-analyzer/analysis/<id>) inherit their section title. */
+function pageTitle(pathname: string): string | undefined {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  const prefix = Object.keys(PAGE_TITLES).find((key) =>
+    pathname.startsWith(`${key}/`),
+  );
+  return prefix ? PAGE_TITLES[prefix] : undefined;
+}
+
 export default function ShellLayout({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const pathname = usePathname();
@@ -35,7 +45,7 @@ export default function ShellLayout({ children }: { children: ReactNode }) {
   return (
     <Shell
       greetingName={isDashboard ? name : undefined}
-      title={isDashboard ? undefined : PAGE_TITLES[pathname]}
+      title={isDashboard ? undefined : pageTitle(pathname)}
       userName={displayName}
       userAvatar={userAvatar}
     >

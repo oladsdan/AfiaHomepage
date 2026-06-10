@@ -3,6 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/lib/web/auth/AuthProvider";
+import { AiGateProvider } from "./_components/AiGateProvider";
+import { Toaster } from "./_components/Toaster";
 
 export function WebProviders({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -21,7 +23,12 @@ export function WebProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      <AuthProvider>{children}</AuthProvider>
+      <AuthProvider>
+        <AiGateProvider>
+          {children}
+          <Toaster />
+        </AiGateProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

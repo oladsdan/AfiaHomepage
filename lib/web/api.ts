@@ -22,6 +22,8 @@ export interface ApiResult<T> {
   ok: boolean;
   status: number;
   data: T | null;
+  /** Response headers (absent on network failure). */
+  headers?: Headers;
 }
 
 export interface RequestOptions extends Omit<RequestInit, "body"> {
@@ -37,7 +39,10 @@ export async function request<T = unknown>(
 
   const finalHeaders = new Headers(headers as HeadersInit | undefined);
   let finalBody: BodyInit | undefined;
-  if (body !== undefined && body !== null) {
+  if (body instanceof FormData) {
+    // Let the browser set the multipart boundary — never set Content-Type.
+    finalBody = body;
+  } else if (body !== undefined && body !== null) {
     finalHeaders.set("Content-Type", "application/json");
     finalBody = JSON.stringify(body);
   }
@@ -65,7 +70,7 @@ export async function request<T = unknown>(
     data = null;
   }
 
-  return { ok: res.ok, status: res.status, data };
+  return { ok: res.ok, status: res.status, data, headers: res.headers };
 }
 
 interface AuthHandlers {

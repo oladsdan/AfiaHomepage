@@ -1,4 +1,3 @@
-import { analysisHistory } from "@/lib/web/analysis-history-data";
 import { AnalysisHistory } from "./_components/AnalysisHistory";
 
 export default function RecentVideosPage() {
@@ -13,7 +12,7 @@ export default function RecentVideosPage() {
       </div>
 
       <div className="mt-6">
-        <AnalysisHistory items={analysisHistory} />
+        <AnalysisHistory />
       </div>
     </>
   );

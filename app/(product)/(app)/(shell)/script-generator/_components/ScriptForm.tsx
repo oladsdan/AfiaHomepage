@@ -8,9 +8,15 @@ import {
   scriptLengths,
   toneOptions,
 } from "@/lib/web/script-generator-data";
+import { cn } from "@/lib/utils";
+import { useAiMutation } from "@/lib/web/ai/useAiMutation";
+import { generateScript } from "@/lib/web/ai/scripts-api";
+import type { GeneratedScript, ScriptGenerateInput } from "@/lib/web/ai/types";
+import { AiGenerating } from "@/app/(product)/_components/AiGenerating";
 import { Card } from "../../dashboard/_components/ui/Card";
 import { SelectableTile } from "../../caption-generator/_components/SelectableTile";
 import { ScriptTypeCard } from "./ScriptTypeCard";
+import { ScriptResult } from "./ScriptView";
 
 const MAX_CHARS = 2000;
 
@@ -24,6 +30,27 @@ export function ScriptForm() {
   const [length, setLength] = useState("short");
   const [platform, setPlatform] = useState("instagram");
   const [tone, setTone] = useState("confident");
+
+  const [result, setResult] = useState<GeneratedScript | null>(null);
+
+  const generate = useAiMutation<GeneratedScript, ScriptGenerateInput>({
+    mutationFn: generateScript,
+    onSuccess: (data) => setResult(data),
+  });
+
+  const ready = idea.trim().length > 0 && scriptType !== null;
+  const canGenerate = ready && !generate.isPending;
+
+  const handleGenerate = () => {
+    if (!ready || generate.isPending || scriptType === null) return;
+    generate.mutate({
+      description: idea.trim(),
+      scriptTypes: [scriptType],
+      length,
+      platforms: [platform],
+      tones: [tone],
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -143,11 +170,28 @@ export function ScriptForm() {
 
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-2 rounded-dash bg-gradient-to-r from-teal-600 via-teal-500 to-blue-500 px-6 py-4 text-sm font-semibold text-white shadow-dash-md transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2"
+        onClick={handleGenerate}
+        disabled={!canGenerate}
+        aria-busy={generate.isPending}
+        className={cn(
+          "flex w-full items-center justify-center gap-2 rounded-dash px-6 py-4 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2",
+          canGenerate
+            ? "bg-gradient-to-r from-teal-600 via-teal-500 to-blue-500 text-white shadow-dash-md hover:opacity-95"
+            : "cursor-not-allowed bg-dash-border text-dash-muted",
+        )}
       >
         <Sparkles className="h-4 w-4" aria-hidden="true" />
-        Generate Script
+        {generate.isPending ? "Generating…" : "Generate Script"}
       </button>
+
+      {generate.isPending ? (
+        <AiGenerating
+          label="Writing your script…"
+          sublabel="This usually takes a few seconds."
+        />
+      ) : result ? (
+        <ScriptResult key={result.id} script={result} />
+      ) : null}
     </div>
   );
 }

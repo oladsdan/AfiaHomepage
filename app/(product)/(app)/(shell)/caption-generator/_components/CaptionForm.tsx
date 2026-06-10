@@ -7,8 +7,14 @@ import {
   captionStyles,
   audiences,
 } from "@/lib/web/caption-generator-data";
+import { cn } from "@/lib/utils";
+import { useAiMutation } from "@/lib/web/ai/useAiMutation";
+import { generateCaptions } from "@/lib/web/ai/captions-api";
+import type { CaptionGenerateInput, CaptionOption } from "@/lib/web/ai/types";
+import { AiGenerating } from "@/app/(product)/_components/AiGenerating";
 import { Card } from "../../dashboard/_components/ui/Card";
 import { SelectableTile } from "./SelectableTile";
+import { CaptionResults, type CaptionSaveMeta } from "./CaptionResults";
 
 const MAX_CHARS = 2000;
 
@@ -21,6 +27,42 @@ export function CaptionForm() {
   const [platform, setPlatform] = useState("instagram");
   const [style, setStyle] = useState("conversational");
   const [audience, setAudience] = useState<string | null>(null);
+
+  const [results, setResults] = useState<CaptionOption[] | null>(null);
+  const [saveMeta, setSaveMeta] = useState<CaptionSaveMeta | null>(null);
+
+  const generate = useAiMutation<CaptionOption[], CaptionGenerateInput>({
+    mutationFn: generateCaptions,
+    onSuccess: (data, variables) => {
+      setResults(data);
+      setSaveMeta({
+        platforms: variables.platforms,
+        style: variables.style,
+        audience: variables.audience,
+      });
+    },
+  });
+
+  const ready = text.trim().length > 0 && audience !== null;
+  const canGenerate = ready && !generate.isPending;
+
+  const handleGenerate = () => {
+    if (!ready || generate.isPending || audience === null) return;
+    generate.mutate({
+      description: text.trim(),
+      platforms: [platform],
+      style,
+      audience,
+    });
+  };
+
+  const handleReplaceText = (id: string, newText: string) => {
+    setResults((prev) =>
+      prev
+        ? prev.map((c) => (c.id === id ? { ...c, text: newText } : c))
+        : prev,
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -128,11 +170,34 @@ export function CaptionForm() {
 
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-2 rounded-dash bg-gradient-to-r from-teal-600 via-teal-500 to-blue-500 px-6 py-4 text-sm font-semibold text-white shadow-dash-md transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2"
+        onClick={handleGenerate}
+        disabled={!canGenerate}
+        aria-busy={generate.isPending}
+        className={cn(
+          "flex w-full items-center justify-center gap-2 rounded-dash px-6 py-4 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2",
+          canGenerate
+            ? "bg-gradient-to-r from-teal-600 via-teal-500 to-blue-500 text-white shadow-dash-md hover:opacity-95"
+            : "cursor-not-allowed bg-dash-border text-dash-muted",
+        )}
       >
         <Sparkles className="h-4 w-4" aria-hidden="true" />
-        Generate Captions
+        {generate.isPending ? "Generating…" : "Generate Captions"}
       </button>
+
+      {generate.isPending ? (
+        <AiGenerating
+          label="Writing your captions…"
+          sublabel="This usually takes a few seconds."
+        />
+      ) : results && saveMeta ? (
+        <CaptionResults
+          captions={results}
+          saveMeta={saveMeta}
+          onReplaceText={handleReplaceText}
+          onGenerateAgain={handleGenerate}
+          generateDisabled={!ready}
+        />
+      ) : null}
     </div>
   );
 }

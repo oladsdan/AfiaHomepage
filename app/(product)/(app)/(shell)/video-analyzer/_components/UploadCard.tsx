@@ -4,13 +4,16 @@ import { useRef, useState, type DragEvent } from "react";
 import { Plus, UploadCloud } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function UploadCard() {
+export function UploadCard({
+  onFileSelected,
+}: {
+  onFileSelected: (file: File) => void;
+}) {
   const [dragging, setDragging] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (file?: File | null) => {
-    if (file) setFileName(file.name);
+    if (file) onFileSelected(file);
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -51,22 +54,20 @@ export function UploadCard() {
           <Plus className="h-4 w-4" aria-hidden="true" />
           Select video
         </button>
-        {fileName ? (
-          <p className="mt-4 text-xs font-medium text-white">
-            Selected: {fileName}
-          </p>
-        ) : (
-          <p className="mt-4 text-[11px] text-white/70">
-            MP4, MOV, WEBM up to 2GB
-          </p>
-        )}
+        <p className="mt-4 text-[11px] text-white/70">
+          MP4, MOV, WEBM up to 2GB
+        </p>
         <input
           ref={inputRef}
           type="file"
           accept="video/mp4,video/quicktime,video/webm"
           className="sr-only"
           aria-label="Upload video"
-          onChange={(e) => handleFile(e.target.files?.[0])}
+          onChange={(e) => {
+            handleFile(e.target.files?.[0]);
+            // Allow re-selecting the same file after a cancel/reset.
+            e.target.value = "";
+          }}
         />
       </div>
     </section>

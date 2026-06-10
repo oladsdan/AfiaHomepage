@@ -1,0 +1,45 @@
+export type ToastType = "error" | "warning" | "success" | "info";
+
+export interface ToastItem {
+  id: string;
+  message: string;
+  type: ToastType;
+  duration: number;
+}
+
+type Listener = (toasts: ToastItem[]) => void;
+
+let toasts: ToastItem[] = [];
+const listeners = new Set<Listener>();
+
+function emit(): void {
+  listeners.forEach((listener) => listener([...toasts]));
+}
+
+export function dismiss(id: string): void {
+  toasts = toasts.filter((t) => t.id !== id);
+  emit();
+}
+
+export function toast(
+  message: string,
+  type: ToastType = "error",
+  duration = 5000,
+): string {
+  const id =
+    Math.random().toString(36).slice(2) + Date.now().toString(36);
+  toasts = [...toasts, { id, message, type, duration }];
+  emit();
+  if (duration > 0) {
+    setTimeout(() => dismiss(id), duration);
+  }
+  return id;
+}
+
+export function subscribeToasts(fn: Listener): () => void {
+  listeners.add(fn);
+  fn([...toasts]);
+  return () => {
+    listeners.delete(fn);
+  };
+}
