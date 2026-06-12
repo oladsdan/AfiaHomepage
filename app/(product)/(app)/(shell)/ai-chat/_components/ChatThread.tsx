@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Image from "next/image";
 import { AlertCircle, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMarkdown } from "./ChatMarkdown";
+import { useTypewriter } from "./useTypewriter";
 import type { ChatMessage } from "./chatTypes";
 
 function AssistantAvatar() {
@@ -52,11 +53,21 @@ function TypingIndicator() {
 function MessageBubble({
   message,
   onRetry,
+  onStreamTick,
 }: {
   message: ChatMessage;
   onRetry: (message: ChatMessage) => void;
+  onStreamTick: () => void;
 }) {
   const isUser = message.role === "user";
+  const animate = !isUser && !!message.animate;
+  // Hook must run unconditionally; for non-animated messages it returns the
+  // full text immediately.
+  const { displayed, done } = useTypewriter(
+    message.content,
+    animate,
+    onStreamTick,
+  );
 
   if (isUser) {
     return (
@@ -89,11 +100,19 @@ function MessageBubble({
     );
   }
 
+  const shown = animate ? displayed : message.content;
+
   return (
     <div className="flex items-start gap-2.5">
       <AssistantAvatar />
       <div className="max-w-[85%] rounded-2xl rounded-tl-sm border border-dash-border bg-dash-surface px-4 py-2.5 text-dash-ink shadow-dash">
-        <ChatMarkdown content={message.content} />
+        <ChatMarkdown content={shown} />
+        {animate && !done && (
+          <span
+            aria-hidden="true"
+            className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse rounded-full bg-dash-brand align-middle"
+          />
+        )}
       </div>
     </div>
   );
@@ -115,6 +134,11 @@ export function ChatThread({
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isTyping]);
 
+  // Keep the newest reply in view as it types out (instant, no smooth jank).
+  const followStream = useCallback(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, []);
+
   return (
     <div
       role="log"
@@ -123,7 +147,12 @@ export function ChatThread({
       className="flex-1 space-y-4 overflow-y-auto pb-2 pr-1"
     >
       {messages.map((message) => (
-        <MessageBubble key={message.id} message={message} onRetry={onRetry} />
+        <MessageBubble
+          key={message.id}
+          message={message}
+          onRetry={onRetry}
+          onStreamTick={followStream}
+        />
       ))}
       {isTyping && <TypingIndicator />}
       <div ref={endRef} />

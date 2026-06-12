@@ -249,7 +249,8 @@ export interface IdeaGenerateInput {
   description: string;
   platforms: string[];
   videoType: string;
-  audience: string;
+  /** Multi-select audiences (matches the mobile app). */
+  audience: string[];
 }
 
 export interface ContentIdea {

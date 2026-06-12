@@ -1,68 +1,93 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Bookmark, Sparkles } from "lucide-react";
 import { platforms, audiences } from "@/lib/web/caption-generator-data";
 import { videoTypes } from "@/lib/web/content-ideas-data";
 import { cn } from "@/lib/utils";
-import { useAiMutation } from "@/lib/web/ai/useAiMutation";
-import { generateIdeas } from "@/lib/web/ai/ideas-api";
-import type { ContentIdea, IdeaGenerateInput } from "@/lib/web/ai/types";
-import { AiGenerating } from "@/app/(product)/_components/AiGenerating";
 import { Card } from "../../dashboard/_components/ui/Card";
 import { SelectableTile } from "../../caption-generator/_components/SelectableTile";
-import { IdeaResultCard, type IdeaHooksContext } from "./IdeaView";
 
-const MAX_CHARS = 200;
+const MAX_CHARS = 500;
 
 function SectionTitle({ children }: { children: string }) {
   return <h2 className="text-sm font-semibold text-dash-ink">{children}</h2>;
 }
 
-interface IdeaResults {
-  ideas: ContentIdea[];
-  /** The video type + platforms that produced these ideas (drives More hooks). */
-  hooksContext: IdeaHooksContext;
+export interface IdeaFormValues {
+  topic: string;
+  platforms: string[];
+  videoType: string | null;
+  audiences: string[];
 }
 
-export function ContentIdeasForm() {
-  const [topic, setTopic] = useState("");
-  const [platform, setPlatform] = useState("instagram");
-  const [videoType, setVideoType] = useState<string | null>(null);
-  const [audience, setAudience] = useState<string | null>(null);
+/**
+ * Controlled idea-generation form. Platforms and audiences are multi-select,
+ * video type is single-select — matching the mobile IdeaGenerator.
+ */
+export function ContentIdeasForm({
+  values,
+  onChange,
+  isGenerating,
+  onGenerate,
+  onOpenSaved,
+}: {
+  values: IdeaFormValues;
+  onChange: (next: IdeaFormValues) => void;
+  isGenerating: boolean;
+  onGenerate: () => void;
+  onOpenSaved: () => void;
+}) {
+  const { topic, platforms: selPlatforms, videoType, audiences: selAud } =
+    values;
 
-  const [results, setResults] = useState<IdeaResults | null>(null);
-
-  const generate = useAiMutation<ContentIdea[], IdeaGenerateInput>({
-    mutationFn: generateIdeas,
-    onSuccess: (ideas, variables) => {
-      setResults({
-        ideas,
-        hooksContext: {
-          videoType: variables.videoType,
-          platforms: variables.platforms,
-        },
-      });
-    },
-  });
-
-  const ready =
-    topic.trim().length > 0 && videoType !== null && audience !== null;
-  const canGenerate = ready && !generate.isPending;
-
-  const handleGenerate = () => {
-    if (!ready || generate.isPending || videoType === null || audience === null)
-      return;
-    generate.mutate({
-      description: topic.trim(),
-      platforms: [platform],
-      videoType,
-      audience,
+  const togglePlatform = (id: string) => {
+    onChange({
+      ...values,
+      platforms: selPlatforms.includes(id)
+        ? selPlatforms.filter((p) => p !== id)
+        : [...selPlatforms, id],
+    });
+  };
+  const toggleAudience = (id: string) => {
+    onChange({
+      ...values,
+      audiences: selAud.includes(id)
+        ? selAud.filter((a) => a !== id)
+        : [...selAud, id],
     });
   };
 
+  const ready =
+    topic.trim().length > 0 &&
+    selPlatforms.length > 0 &&
+    videoType !== null &&
+    selAud.length > 0;
+  const canGenerate = ready && !isGenerating;
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-dash-ink">
+            Get Fresh Content Ideas
+            <Sparkles className="h-5 w-5 text-dash-brand" aria-hidden="true" />
+          </h1>
+          <p className="mt-1 text-sm text-dash-muted">
+            Generate creative, high-performing video ideas tailored to your
+            audience and niche.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenSaved}
+          aria-haspopup="dialog"
+          className="inline-flex items-center gap-2 rounded-lg border border-dash-border bg-dash-surface px-3 py-2 text-sm font-medium text-dash-ink transition-colors hover:bg-dash-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2"
+        >
+          <Bookmark className="h-4 w-4" aria-hidden="true" />
+          Saved ideas
+        </button>
+      </div>
+
       <Card className="p-5">
         <label htmlFor="topic" className="text-sm font-semibold text-dash-ink">
           Topic
@@ -72,7 +97,7 @@ export function ContentIdeasForm() {
             id="topic"
             value={topic}
             maxLength={MAX_CHARS}
-            onChange={(e) => setTopic(e.target.value)}
+            onChange={(e) => onChange({ ...values, topic: e.target.value })}
             placeholder="e.g Motivation, lifestyle, making money online, fitness..."
             rows={4}
             className="w-full resize-none rounded-dash border border-dash-border bg-dash-bg p-4 pb-8 text-sm text-dash-ink placeholder:text-dash-muted focus:border-dash-brand focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand/40"
@@ -86,18 +111,18 @@ export function ContentIdeasForm() {
       <section>
         <SectionTitle>Posting on</SectionTitle>
         <div
-          role="radiogroup"
+          role="group"
           aria-label="Posting on"
           className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
         >
           {platforms.map((p) => {
             const Icon = p.icon;
-            const selected = platform === p.id;
+            const selected = selPlatforms.includes(p.id);
             return (
               <SelectableTile
                 key={p.id}
                 selected={selected}
-                onSelect={() => setPlatform(p.id)}
+                onSelect={() => togglePlatform(p.id)}
                 ariaLabel={p.label}
                 className="flex-col gap-2 px-3 py-4"
               >
@@ -124,7 +149,7 @@ export function ContentIdeasForm() {
             <SelectableTile
               key={v.id}
               selected={videoType === v.id}
-              onSelect={() => setVideoType(v.id)}
+              onSelect={() => onChange({ ...values, videoType: v.id })}
               ariaLabel={v.label}
               className="rounded-full px-4 py-2.5"
             >
@@ -137,15 +162,15 @@ export function ContentIdeasForm() {
       <section>
         <SectionTitle>Audience</SectionTitle>
         <div
-          role="radiogroup"
+          role="group"
           aria-label="Audience"
           className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"
         >
           {audiences.map((a) => (
             <SelectableTile
               key={a.id}
-              selected={audience === a.id}
-              onSelect={() => setAudience(a.id)}
+              selected={selAud.includes(a.id)}
+              onSelect={() => toggleAudience(a.id)}
               ariaLabel={a.label}
               className="flex-col gap-2 px-3 py-5"
             >
@@ -164,9 +189,9 @@ export function ContentIdeasForm() {
 
       <button
         type="button"
-        onClick={handleGenerate}
+        onClick={onGenerate}
         disabled={!canGenerate}
-        aria-busy={generate.isPending}
+        aria-busy={isGenerating}
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-dash px-6 py-4 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2",
           canGenerate
@@ -175,34 +200,8 @@ export function ContentIdeasForm() {
         )}
       >
         <Sparkles className="h-4 w-4" aria-hidden="true" />
-        {generate.isPending ? "Generating…" : "Generate Content Ideas"}
+        {isGenerating ? "Generating…" : "Generate Content Ideas"}
       </button>
-
-      {generate.isPending ? (
-        <AiGenerating
-          label="Brainstorming ideas…"
-          sublabel="This usually takes a few seconds."
-        />
-      ) : results ? (
-        <section aria-label="Generated content ideas" className="space-y-4">
-          <h2 className="text-lg font-bold text-dash-ink">Your content ideas</h2>
-          {results.ideas.length === 0 ? (
-            <Card className="p-5">
-              <p className="text-sm text-dash-muted">
-                No ideas came back this time. Try generating again.
-              </p>
-            </Card>
-          ) : (
-            results.ideas.map((idea, i) => (
-              <IdeaResultCard
-                key={idea.id ?? `idea-${i}`}
-                idea={idea}
-                hooksContext={results.hooksContext}
-              />
-            ))
-          )}
-        </section>
-      ) : null}
     </div>
   );
 }

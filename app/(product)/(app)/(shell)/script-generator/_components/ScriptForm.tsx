@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Sparkles } from "lucide-react";
 import { platforms } from "@/lib/web/caption-generator-data";
 import {
@@ -32,6 +32,12 @@ export function ScriptForm() {
   const [tone, setTone] = useState("confident");
 
   const [result, setResult] = useState<GeneratedScript | null>(null);
+
+  // Prefill the idea when arriving from "Create My Script" (?topic=...).
+  useEffect(() => {
+    const topic = new URLSearchParams(window.location.search).get("topic");
+    if (topic) setIdea((cur) => (cur.trim() ? cur : topic));
+  }, []);
 
   const generate = useAiMutation<GeneratedScript, ScriptGenerateInput>({
     mutationFn: generateScript,

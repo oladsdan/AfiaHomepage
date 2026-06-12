@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bookmark,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
   Loader2,
   Trash2,
   X,
@@ -19,15 +18,16 @@ import {
   SAVED_IDEAS_QUERY_KEY,
   type SavedIdea,
 } from "@/lib/web/ai/ideas-api";
-import {
-  CopyIdeaButton,
-  IdeaBody,
-  ideaActionButtonClasses,
-} from "./IdeaView";
+import type { ContentIdea } from "@/lib/web/ai/types";
 
-function SavedIdeaItem({ item }: { item: SavedIdea }) {
+function SavedIdeaRow({
+  item,
+  onOpen,
+}: {
+  item: SavedIdea;
+  onOpen: (idea: ContentIdea) => void;
+}) {
   const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
 
   const remove = useAiMutation<void, void>({
     mutationFn: () => deleteSavedIdea(item.id),
@@ -37,74 +37,66 @@ function SavedIdeaItem({ item }: { item: SavedIdea }) {
     },
   });
 
-  const savedDate =
-    typeof item.createdAt === "string" ? new Date(item.createdAt) : null;
-
   return (
-    <li className="rounded-dash border border-dash-border bg-dash-surface p-4 shadow-dash">
-      <p className="text-sm font-semibold text-dash-ink">{item.title}</p>
-      {item.description && !expanded && (
-        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-dash-muted">
-          {item.description}
-        </p>
-      )}
-      {savedDate && !Number.isNaN(savedDate.getTime()) && (
-        <p className="mt-2 text-xs text-dash-muted">
-          {savedDate.toLocaleDateString()}
-        </p>
-      )}
-
-      {expanded && (
-        <div className="mt-3 border-t border-dash-border pt-3">
-          <IdeaBody idea={item} />
+    <li className="flex items-center gap-2 rounded-dash border border-dash-border bg-dash-surface p-3 shadow-dash">
+      <button
+        type="button"
+        onClick={() => onOpen(item)}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-semibold text-dash-ink">
+            {item.title}
+          </p>
+          {item.description && (
+            <p className="mt-0.5 line-clamp-1 text-xs text-dash-muted">
+              {item.description}
+            </p>
+          )}
         </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-label={expanded ? "Hide full idea" : "View full idea"}
-          className={cn(
-            ideaActionButtonClasses,
-            expanded && "border-dash-brand text-dash-brand",
-          )}
-        >
-          {expanded ? (
-            <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
-          {expanded ? "Hide" : "View"}
-        </button>
-        <CopyIdeaButton idea={item} ariaLabel="Copy saved idea to clipboard" />
-        <button
-          type="button"
-          onClick={() => remove.mutate()}
-          disabled={remove.isPending}
-          aria-label="Delete saved idea"
-          className={cn(ideaActionButtonClasses, "text-red-600 hover:bg-red-50")}
-        >
-          {remove.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          ) : (
-            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
-          Delete
-        </button>
-      </div>
+        <ChevronRight
+          className="h-4 w-4 shrink-0 text-dash-muted"
+          aria-hidden="true"
+        />
+      </button>
+      <button
+        type="button"
+        onClick={() => remove.mutate()}
+        disabled={remove.isPending}
+        aria-label={`Delete ${item.title}`}
+        className="shrink-0 rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:opacity-50"
+      >
+        {remove.isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        )}
+      </button>
     </li>
   );
 }
 
-function SavedIdeasSlideOver({ onClose }: { onClose: () => void }) {
+/**
+ * Controlled saved-ideas slide-over. Lists the user's saved ideas; selecting
+ * one calls onOpenIdea (the orchestrator opens it in the breakdown view).
+ */
+export function SavedIdeasPanel({
+  open,
+  onClose,
+  onOpenIdea,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenIdea: (idea: ContentIdea) => void;
+}) {
   const savedQuery = useQuery({
     queryKey: SAVED_IDEAS_QUERY_KEY,
     queryFn: listSavedIdeas,
+    enabled: open,
   });
 
   useEffect(() => {
+    if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -115,7 +107,9 @@ function SavedIdeasSlideOver({ onClose }: { onClose: () => void }) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [onClose]);
+  }, [open, onClose]);
+
+  if (!open) return null;
 
   const items = savedQuery.data ?? [];
 
@@ -136,7 +130,7 @@ function SavedIdeasSlideOver({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between border-b border-dash-border bg-dash-surface px-5 py-4">
           <h2 className="flex items-center gap-2 text-base font-bold text-dash-ink">
             <Bookmark className="h-4 w-4 text-dash-brand" aria-hidden="true" />
-            Saved ideas
+            Saved Ideas
           </h2>
           <button
             type="button"
@@ -183,39 +177,19 @@ function SavedIdeasSlideOver({ onClose }: { onClose: () => void }) {
                   No saved ideas yet
                 </p>
                 <p className="mt-1 text-xs text-dash-muted">
-                  Generate ideas and hit Save to keep your favourites here.
+                  Bookmark ideas from the breakdown screen to find them here.
                 </p>
               </div>
             </div>
           ) : (
             <ul className="space-y-3">
               {items.map((item) => (
-                <SavedIdeaItem key={item.id} item={item} />
+                <SavedIdeaRow key={item.id} item={item} onOpen={onOpenIdea} />
               ))}
             </ul>
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-export function SavedIdeasPanel() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className="inline-flex items-center gap-2 rounded-lg border border-dash-border bg-dash-surface px-3 py-2 text-sm font-medium text-dash-ink transition-colors hover:bg-dash-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-dash-brand focus-visible:ring-offset-2"
-      >
-        <Bookmark className="h-4 w-4" aria-hidden="true" />
-        Saved ideas
-      </button>
-      {open && <SavedIdeasSlideOver onClose={() => setOpen(false)} />}
-    </>
   );
 }

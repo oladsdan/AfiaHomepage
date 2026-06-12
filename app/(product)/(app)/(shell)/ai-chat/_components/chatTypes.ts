@@ -6,4 +6,6 @@ export interface ChatMessage {
   content: string;
   /** True while the user message's send is in flight or failed. */
   status?: "sending" | "failed";
+  /** Assistant only: typewriter-reveal this message (set on fresh replies). */
+  animate?: boolean;
 }

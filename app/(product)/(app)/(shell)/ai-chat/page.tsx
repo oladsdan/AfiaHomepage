@@ -122,6 +122,7 @@ export default function AiChatPage() {
             id: nextLocalId("assistant"),
             role: "assistant",
             content: reply.reply,
+            animate: true,
           },
         ]);
       }
